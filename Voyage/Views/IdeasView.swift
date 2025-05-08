@@ -295,25 +295,7 @@ struct ReciMeIdeaCardView: View {
     }
 }
 
-// Updated Filter Chip View for the filter row
-struct FilterChipView: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.caption2)
-                .fontWeight(isSelected ? .medium : .regular)
-                .foregroundColor(isSelected ? .white : .gray)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(isSelected ? Color.teal : Color(.systemGray5))
-                .clipShape(Capsule())
-        }
-    }
-}
+// FilterChipView moved to Components folder
 
 // Airbnb-inspired Board View - without background
 struct AirbnbBoardView: View {
@@ -544,4 +526,4 @@ struct TagView: View {
 #Preview {
     IdeasView()
         .accentColor(.teal)
-} 
+}

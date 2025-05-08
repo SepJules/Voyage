@@ -11,18 +11,34 @@ struct TripDetailView: View {
     @StateObject private var viewModel: TripDetailViewModel
     @Environment(\.presentationMode) var presentationMode
     @State private var notes: String = ""
+    @State private var selectedTab = 0
     
     init(trip: Trip) {
         _viewModel = StateObject(wrappedValue: TripDetailViewModel(trip: trip))
     }
     
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                // MARK: - Trip Header Section (Sticky)
-                Section(header: TripHeaderView(viewModel: viewModel)) {
-                    Color.clear.frame(height: 16) // Spacer
+        VStack(spacing: 0) {
+            // Tab selector
+            HStack {
+                Picker("View Mode", selection: $selectedTab) {
+                    Text("Itinerary").tag(0)
+                    Text("Planner").tag(1)
                 }
+                .pickerStyle(SegmentedPickerStyle())
+                .padding(.horizontal)
+                .padding(.top, 8)
+            }
+            
+            // Content based on selected tab
+            if selectedTab == 0 {
+                // Original itinerary view
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                        // MARK: - Trip Header Section (Sticky)
+                        Section(header: TripHeaderView(viewModel: viewModel)) {
+                            Color.clear.frame(height: 16) // Spacer
+                        }
                 
                 // MARK: - Daily Itinerary Section
                 Section {
@@ -141,7 +157,12 @@ struct TripDetailView: View {
                             }
                     }
                 }
-                .padding(.bottom, 100) // Space for FAB and tab bar
+                        .padding(.bottom, 100) // Space for FAB and tab bar
+                    }
+                }
+            } else {
+                // New drag and drop planner view
+                DragDropPlannerView(tripDetailViewModel: viewModel)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -544,4 +565,4 @@ struct EmptyStateView: View {
     NavigationView {
         TripDetailView(trip: Trip.upcomingSamples[0])
     }
-} 
+}

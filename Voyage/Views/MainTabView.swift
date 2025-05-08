@@ -19,6 +19,8 @@ struct MainTabView: View {
             ZStack {
                 if selectedTab == 0 {
                     HomeView()
+                } else if selectedTab == 1 {
+                    VideoLibraryView()
                 } else if selectedTab == 2 {
                     IdeasView()
                 }
@@ -32,7 +34,8 @@ struct MainTabView: View {
                 ActionSheetView(
                     isPresented: $showActionModal,
                     showImportModal: $showImportModal,
-                    showingAddTrip: $showingAddTrip
+                    showingAddTrip: $showingAddTrip,
+                    selectedTab: $selectedTab
                 )
                 .transition(.move(edge: .bottom))
                 .animation(.spring(), value: showActionModal)
@@ -86,6 +89,21 @@ struct TabBarView: View {
                 }
                 
                 Spacer()
+                
+                // Videos Tab
+                Button {
+                    selectedTab = 1
+                } label: {
+                    VStack(spacing: 2) {
+                        Spacer().frame(height: 6)
+                        Image(systemName: "film.fill")
+                            .font(.system(size: 24))
+                        Text("Videos")
+                            .font(.caption2)
+                    }
+                    .foregroundColor(selectedTab == 1 ? .teal : .gray)
+                    .padding(.bottom, 4) // Shift down slightly
+                }
                 
                 // Center space for add button
                 Spacer()
@@ -148,6 +166,7 @@ struct ActionSheetView: View {
     @Binding var isPresented: Bool
     @Binding var showImportModal: Bool
     @Binding var showingAddTrip: Bool
+    @Binding var selectedTab: Int
     
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -212,30 +231,55 @@ struct ActionSheetView: View {
                         .cornerRadius(12)
                     }
                     
-                    // Add Idea Button
-                    Button {
-                        withAnimation {
-                            isPresented = false
-                            // Show the idea import options
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                showImportModal = true
+                        // Add Idea Button
+                        Button {
+                            withAnimation {
+                                isPresented = false
+                                // Show the idea import options
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    showImportModal = true
+                                }
                             }
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: "lightbulb.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(.white)
+                        } label: {
+                            HStack {
+                                Image(systemName: "lightbulb.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.white)
                             
-                            Text("Add Idea")
-                                .font(.headline)
-                                .foregroundColor(.white)
+                                Text("Add Idea")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color.teal)
+                            .cornerRadius(12)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Color.teal)
-                        .cornerRadius(12)
-                    }
+                        
+                        // Add Video Button
+                        Button {
+                            withAnimation {
+                                isPresented = false
+                                // Navigate to video import
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    selectedTab = 1 // Switch to Videos tab
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Image(systemName: "film")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.white)
+                            
+                                Text("Add Video")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color.teal)
+                            .cornerRadius(12)
+                        }
                 }
                 .padding(.horizontal)
                 
@@ -394,4 +438,4 @@ struct ImportOptionButton: View {
     MainTabView()
         .accentColor(.teal)
         .edgesIgnoringSafeArea(.bottom)
-} 
+}
