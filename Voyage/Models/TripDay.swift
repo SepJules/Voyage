@@ -132,11 +132,50 @@ struct TripDay: Identifiable, Codable {
 // Model representing an activity in a trip day
 struct TripActivity: Identifiable, Codable {
     var id = UUID()
-    var ideaId: UUID
     var title: String
     var sourceType: String
     var location: String
     var timeOfDay: TimeOfDay = .morning
+    var placeId: String? // Google Places ID if from search
+    var linkedIdeaId: UUID? // Optional reference to a saved idea
+    var photoReference: String? // Google Places photo reference
+    var latitude: Double? // Latitude for map display
+    var longitude: Double? // Longitude for map display
+    var activityType: String? // Type of activity (e.g., "Restaurant", "Museum", "Outdoor")
+    var rating: Double? // Google rating if available
+    
+    // Constructor for backward compatibility
+    init(ideaId: UUID, title: String, sourceType: String, location: String, timeOfDay: TimeOfDay = .morning) {
+        self.id = UUID()
+        self.title = title
+        self.sourceType = sourceType
+        self.location = location
+        self.timeOfDay = timeOfDay
+        self.linkedIdeaId = ideaId
+        self.photoReference = nil
+        self.latitude = nil
+        self.longitude = nil
+        self.activityType = nil
+        self.rating = nil
+    }
+    
+    // New constructor with all parameters
+    init(id: UUID = UUID(), title: String, location: String, sourceType: String, placeId: String? = nil, 
+         linkedIdeaId: UUID? = nil, photoReference: String? = nil, timeOfDay: TimeOfDay = .morning, 
+         latitude: Double? = nil, longitude: Double? = nil, activityType: String? = nil, rating: Double? = nil) {
+        self.id = id
+        self.title = title
+        self.location = location
+        self.sourceType = sourceType
+        self.placeId = placeId
+        self.linkedIdeaId = linkedIdeaId
+        self.photoReference = photoReference
+        self.timeOfDay = timeOfDay
+        self.latitude = latitude
+        self.longitude = longitude
+        self.activityType = activityType
+        self.rating = rating
+    }
     
     enum TimeOfDay: String, Codable, CaseIterable {
         case morning = "Morning"

@@ -99,26 +99,99 @@ class TripDetailViewModel: ObservableObject {
     }
     
     // MARK: - Activity Operations
-    func addActivity(ideaId: UUID, title: String, source: String, location: String, dayId: UUID, timeOfDay: TripActivity.TimeOfDay) {
-        guard let dayIndex = tripDays.firstIndex(where: { $0.id == dayId }) else { return }
-        
-        let activity = TripActivity(
-            ideaId: ideaId,
-            title: title,
-            sourceType: source,
-            location: location,
-            timeOfDay: timeOfDay
+    func addActivity(dayId: UUID, timeOfDay: TripActivity.TimeOfDay, activityData: ActivityData) {
+        // Find the day
+        if let dayIndex = tripDays.firstIndex(where: { $0.id == dayId }) {
+            // If we have a place ID, fetch coordinates from Google Maps API
+            if let placeId = activityData.placeId {
+                // We could fetch coordinates here, but for now we'll check if they're already included
+                // In a real implementation, you'd make an API call to get coordinates if not available
+                
+                // For places from Google Places search, we need to make sure coordinates are set
+                if activityData.sourceType == "Google Places" && (activityData.latitude == nil || activityData.longitude == nil) {
+                    // Trigger fetch of place details to get coordinates
+                    let placesService = GooglePlacesService()
+                    placesService.getPlaceDetails(placeId: placeId) { details, error in
+                        if let details = details {
+                            // Now create and add the activity with coordinates
+                            let latitude = details.geometry.location.lat
+                            let longitude = details.geometry.location.lng
+                            
+                            DispatchQueue.main.async {
+                                self.addActivityWithCoordinates(
+                                    dayId: dayId,
+                                    dayIndex: dayIndex,
+                                    timeOfDay: timeOfDay,
+                                    activityData: activityData,
+                                    latitude: latitude,
+                                    longitude: longitude
+                                )
+                            }
+                        } else {
+                            // If details fetch failed, add activity without coordinates
+                            DispatchQueue.main.async {
+                                self.addActivityWithCoordinates(
+                                    dayId: dayId,
+                                    dayIndex: dayIndex,
+                                    timeOfDay: timeOfDay,
+                                    activityData: activityData,
+                                    latitude: nil,
+                                    longitude: nil
+                                )
+                            }
+                        }
+                    }
+                    return // Exit early as we'll add the activity in the callback
+                }
+            }
+            
+            // If we get here, either we have coordinates or we don't need to fetch them
+            addActivityWithCoordinates(
+                dayId: dayId,
+                dayIndex: dayIndex,
+                timeOfDay: timeOfDay,
+                activityData: activityData,
+                latitude: activityData.latitude,
+                longitude: activityData.longitude
+            )
+        }
+    }
+    
+    // Helper method to add activity with coordinates
+    private func addActivityWithCoordinates(dayId: UUID, dayIndex: Int, timeOfDay: TripActivity.TimeOfDay, activityData: ActivityData, latitude: Double?, longitude: Double?) {
+        // Create a new activity
+        let newActivity = TripActivity(
+            id: UUID(),
+            title: activityData.title,
+            location: activityData.location,
+            sourceType: activityData.sourceType,
+            placeId: activityData.placeId,
+            linkedIdeaId: activityData.ideaId,
+            photoReference: activityData.photoReference,
+            timeOfDay: timeOfDay,
+            latitude: latitude,
+            longitude: longitude,
+            activityType: activityData.activityType,
+            rating: activityData.rating
         )
         
-        // Add to appropriate segment
+        // Add to the appropriate time slot
+        var updatedDay = tripDays[dayIndex]
+        
         switch timeOfDay {
         case .morning:
-            tripDays[dayIndex].segments.morning.append(activity)
+            updatedDay.segments.morning.append(newActivity)
         case .afternoon:
-            tripDays[dayIndex].segments.afternoon.append(activity)
+            updatedDay.segments.afternoon.append(newActivity)
         case .evening:
-            tripDays[dayIndex].segments.evening.append(activity)
+            updatedDay.segments.evening.append(newActivity)
         }
+        
+        // Update the day
+        tripDays[dayIndex] = updatedDay
+        
+        // Save changes
+        saveTrip()
     }
     
     func removeActivity(dayId: UUID, activityId: UUID, timeOfDay: TripActivity.TimeOfDay) {
@@ -132,6 +205,36 @@ class TripDetailViewModel: ObservableObject {
         case .evening:
             tripDays[dayIndex].segments.evening.removeAll { $0.id == activityId }
         }
+    }
+    
+    // Reorder activities within a time slot
+    func reorderActivities(dayId: UUID, timeOfDay: TripActivity.TimeOfDay, fromIndex: Int, toIndex: Int) {
+        guard let dayIndex = tripDays.firstIndex(where: { $0.id == dayId }) else { return }
+        
+        var updatedDay = tripDays[dayIndex]
+        
+        switch timeOfDay {
+        case .morning:
+            guard fromIndex < updatedDay.segments.morning.count && toIndex < updatedDay.segments.morning.count else { return }
+            let activity = updatedDay.segments.morning.remove(at: fromIndex)
+            updatedDay.segments.morning.insert(activity, at: toIndex)
+            
+        case .afternoon:
+            guard fromIndex < updatedDay.segments.afternoon.count && toIndex < updatedDay.segments.afternoon.count else { return }
+            let activity = updatedDay.segments.afternoon.remove(at: fromIndex)
+            updatedDay.segments.afternoon.insert(activity, at: toIndex)
+            
+        case .evening:
+            guard fromIndex < updatedDay.segments.evening.count && toIndex < updatedDay.segments.evening.count else { return }
+            let activity = updatedDay.segments.evening.remove(at: fromIndex)
+            updatedDay.segments.evening.insert(activity, at: toIndex)
+        }
+        
+        // Update the day with the reordered activities
+        tripDays[dayIndex] = updatedDay
+        
+        // Save changes
+        saveTrip()
     }
     
     // MARK: - Idea Operations

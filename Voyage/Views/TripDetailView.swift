@@ -6,142 +6,54 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct TripDetailView: View {
     @StateObject private var viewModel: TripDetailViewModel
     @Environment(\.presentationMode) var presentationMode
     @State private var notes: String = ""
+    @State private var viewMode: ViewMode = .timeline // Combined view mode
+    @State private var showingAddActivityModal = false
+    @State private var selectedDayId: UUID?
+    @State private var selectedTimeOfDay: TripActivity.TimeOfDay?
+    
+    enum ViewMode {
+        case timeline
+        case map
+        case ideas
+    }
     
     init(trip: Trip) {
         _viewModel = StateObject(wrappedValue: TripDetailViewModel(trip: trip))
     }
     
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                // MARK: - Trip Header Section (Sticky)
-                Section(header: TripHeaderView(viewModel: viewModel)) {
-                    Color.clear.frame(height: 16) // Spacer
-                }
-                
-                // MARK: - Daily Itinerary Section
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Daily Itinerary")
-                            .font(.headline)
-                            .padding(.horizontal)
-                            .padding(.top, 16)
-                        
-                        if viewModel.tripDays.isEmpty {
-                            EmptyStateView(
-                                icon: "calendar",
-                                title: "No days planned yet",
-                                message: "Start adding activities to your trip"
-                            )
-                        } else {
-                            ForEach(viewModel.tripDays.sorted { $0.date < $1.date }) { day in
-                                DayItineraryCard(
-                                    day: day,
-                                    isExpanded: viewModel.isDayExpanded(day.id),
-                                    onToggleExpand: {
-                                        viewModel.toggleDayExpanded(day.id)
-                                    },
-                                    onAddActivity: { timeOfDay in
-                                        viewModel.prepareToAddActivity(dayId: day.id, timeOfDay: timeOfDay)
-                                    },
-                                    onRemoveActivity: { activityId, timeOfDay in
-                                        viewModel.removeActivity(dayId: day.id, activityId: activityId, timeOfDay: timeOfDay)
-                                    }
-                                )
-                                .padding(.horizontal)
-                                .padding(.vertical, 4)
-                            }
-                        }
-                    }
-                }
-                
-                // MARK: - Linked Ideas Section
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Trip Ideas")
-                                .font(.headline)
-                            
-                            Spacer()
-                            
-                            Button(action: {
-                                viewModel.showAddIdeasSheet()
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "plus")
-                                        .font(.caption)
-                                    
-                                    Text("Add Ideas")
-                                        .font(.subheadline)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color(.systemGray6))
-                                .cornerRadius(16)
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.top, 24)
-                        .padding(.bottom, 8)
-                        
-                        if viewModel.linkedIdeas.isEmpty {
-                            EmptyStateView(
-                                icon: "lightbulb",
-                                title: "No ideas linked yet",
-                                message: "Add ideas to help plan your trip"
-                            )
-                        } else {
-                            // Grid of linked ideas
-                            LazyVGrid(columns: [
-                                GridItem(.flexible(), spacing: 16),
-                                GridItem(.flexible(), spacing: 16)
-                            ], spacing: 16) {
-                                ForEach(viewModel.linkedIdeas) { idea in
-                                    LinkedIdeaCard(
-                                        idea: idea,
-                                        onUnlink: {
-                                            viewModel.unlinkIdea(idea.id)
-                                        }
-                                    )
-                                }
-                            }
-                            .padding(.horizontal)
-                        }
-                    }
-                }
-                
-                // MARK: - Notes Section
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Trip Notes")
-                            .font(.headline)
-                            .padding(.horizontal)
-                            .padding(.top, 24)
-                            .padding(.bottom, 8)
-                        
-                        // Use local state for the notes to avoid constant updates
-                        TextEditor(text: $notes)
-                            .frame(minHeight: 150)
-                            .padding(12)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
-                            .padding(.horizontal)
-                            .onAppear {
-                                notes = viewModel.trip.notes
-                            }
-                            .onDisappear {
-                                if notes != viewModel.trip.notes {
-                                    viewModel.updateNotes(notes)
-                                }
-                            }
-                    }
-                }
-                .padding(.bottom, 100) // Space for FAB and tab bar
+        VStack(spacing: 0) {
+            // Single unified toggle for Timeline/Map/Ideas
+            Picker("View Mode", selection: $viewMode) {
+                Text("Timeline").tag(ViewMode.timeline)
+                Text("Map").tag(ViewMode.map)
+                Text("Ideas").tag(ViewMode.ideas)
+            }
+            .pickerStyle(SegmentedPickerStyle())
+            .padding(.horizontal)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+            
+            // Content based on selected view mode
+            switch viewMode {
+            case .timeline:
+                // Timeline View
+                itineraryView
+            case .map:
+                // Map View
+                TripMapView(
+                    viewModel: viewModel,
+                    tripDays: viewModel.tripDays
+                )
+            case .ideas:
+                // Ideas View
+                TripIdeasView(viewModel: viewModel)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -174,8 +86,9 @@ struct TripDetailView: View {
             }
         }
         .overlay(
-            // Floating Action Button
-            Button(action: {
+            // Only show FAB in Timeline mode
+            viewMode == .timeline ?
+            AnyView(Button(action: {
                 // Default action - expand to show options
                 if let firstDay = viewModel.tripDays.first {
                     viewModel.prepareToAddActivity(dayId: firstDay.id, timeOfDay: .morning)
@@ -193,13 +106,30 @@ struct TripDetailView: View {
                 }
             }
             .padding(.bottom, 16)
-            .padding(.trailing, 16),
+            .padding(.trailing, 16)) : AnyView(EmptyView()),
             alignment: .bottomTrailing
         )
         .sheet(isPresented: $viewModel.showingEditTrip) {
             EditTripView(trip: viewModel.trip) { updatedTrip in
                 viewModel.trip = updatedTrip
                 viewModel.saveTrip()
+            }
+        }
+        .sheet(isPresented: $showingAddActivityModal) {
+            // Reset selected day and time of day when modal is dismissed
+            selectedDayId = nil
+            selectedTimeOfDay = nil
+        } content: {
+            if let dayId = selectedDayId, let timeOfDay = selectedTimeOfDay {
+                AddActivityModalView(
+                    trip: viewModel.trip,
+                    savedIdeas: viewModel.trip.savedIdeas,
+                    onSelectActivity: { activityData in
+                        // Add the selected activity to the day and time slot
+                        viewModel.addActivity(dayId: dayId, timeOfDay: timeOfDay, activityData: activityData)
+                        showingAddActivityModal = false
+                    }
+                )
             }
         }
         .alert("Delete Trip?", isPresented: $viewModel.showingDeleteConfirm) {
@@ -223,6 +153,87 @@ struct TripDetailView: View {
                     viewModel.showingAddIdeasSheet = false
                 }
                 .padding()
+            }
+        }
+    }
+    
+    // Itinerary View - moved the ScrollView content to a separate property for better organization
+    private var itineraryView: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                // MARK: - Trip Header Section (Sticky)
+                Section(header: TripHeaderView(viewModel: viewModel)) {
+                    Color.clear.frame(height: 16) // Spacer
+                }
+                
+                // MARK: - Daily Itinerary Section
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Daily Itinerary")
+                            .font(.headline)
+                            .padding(.horizontal)
+                            .padding(.top, 16)
+                        
+                        if viewModel.tripDays.isEmpty {
+                            EmptyStateView(
+                                icon: "calendar",
+                                title: "No days planned yet",
+                                message: "Start adding activities to your trip"
+                            )
+                        } else {
+                            ForEach(viewModel.tripDays.sorted { $0.date < $1.date }) { day in
+                                DayItineraryCard(
+                                    day: day,
+                                    isExpanded: viewModel.isDayExpanded(day.id),
+                                    onToggleExpand: {
+                                        viewModel.toggleDayExpanded(day.id)
+                                    },
+                                    onAddActivity: { timeOfDay in
+                                        selectedDayId = day.id
+                                        selectedTimeOfDay = timeOfDay
+                                        showingAddActivityModal = true
+                                    },
+                                    onRemoveActivity: { activityId, timeOfDay in
+                                        viewModel.removeActivity(dayId: day.id, activityId: activityId, timeOfDay: timeOfDay)
+                                    },
+                                    onReorderActivity: { timeOfDay, fromIndex, toIndex in
+                                        viewModel.reorderActivities(dayId: day.id, timeOfDay: timeOfDay, fromIndex: fromIndex, toIndex: toIndex)
+                                    }
+                                )
+                                .padding(.horizontal)
+                                .padding(.vertical, 4)
+                            }
+                        }
+                    }
+                }
+                
+                // MARK: - Notes Section
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Trip Notes")
+                            .font(.headline)
+                            .padding(.horizontal)
+                            .padding(.top, 24)
+                            .padding(.bottom, 8)
+                        
+                        // Use local state for the notes to avoid constant updates
+                        TextEditor(text: $notes)
+                            .frame(minHeight: 150)
+                            .padding(12)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(12)
+                            .padding(.horizontal)
+                            .onAppear {
+                                notes = viewModel.trip.notes
+                            }
+                            .onDisappear {
+                                if notes != viewModel.trip.notes {
+                                    viewModel.updateNotes(notes)
+                                }
+                            }
+                    }
+                }
+                .padding(.bottom, 100) // Space for FAB and tab bar
             }
         }
     }
@@ -273,6 +284,7 @@ struct DayItineraryCard: View {
     let onToggleExpand: () -> Void
     let onAddActivity: (TripActivity.TimeOfDay) -> Void
     let onRemoveActivity: (UUID, TripActivity.TimeOfDay) -> Void
+    let onReorderActivity: (TripActivity.TimeOfDay, Int, Int) -> Void
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -310,8 +322,13 @@ struct DayItineraryCard: View {
                     TimeSegmentView(
                         title: "Morning", 
                         activities: day.segments.morning,
+                        dayId: day.id,
+                        timeOfDay: .morning,
                         onAdd: { onAddActivity(.morning) },
-                        onRemove: { activityId in onRemoveActivity(activityId, .morning) }
+                        onRemove: { activityId in onRemoveActivity(activityId, .morning) },
+                        onReorder: { fromIndex, toIndex in
+                            onReorderActivity(.morning, fromIndex, toIndex)
+                        }
                     )
                     
                     Divider()
@@ -319,8 +336,13 @@ struct DayItineraryCard: View {
                     TimeSegmentView(
                         title: "Afternoon", 
                         activities: day.segments.afternoon,
+                        dayId: day.id,
+                        timeOfDay: .afternoon,
                         onAdd: { onAddActivity(.afternoon) },
-                        onRemove: { activityId in onRemoveActivity(activityId, .afternoon) }
+                        onRemove: { activityId in onRemoveActivity(activityId, .afternoon) },
+                        onReorder: { fromIndex, toIndex in
+                            onReorderActivity(.afternoon, fromIndex, toIndex)
+                        }
                     )
                     
                     Divider()
@@ -328,8 +350,13 @@ struct DayItineraryCard: View {
                     TimeSegmentView(
                         title: "Evening", 
                         activities: day.segments.evening,
+                        dayId: day.id,
+                        timeOfDay: .evening,
                         onAdd: { onAddActivity(.evening) },
-                        onRemove: { activityId in onRemoveActivity(activityId, .evening) }
+                        onRemove: { activityId in onRemoveActivity(activityId, .evening) },
+                        onReorder: { fromIndex, toIndex in
+                            onReorderActivity(.evening, fromIndex, toIndex)
+                        }
                     )
                 }
                 .padding(.horizontal, 16)
@@ -348,8 +375,13 @@ struct DayItineraryCard: View {
 struct TimeSegmentView: View {
     let title: String
     let activities: [TripActivity]
+    let dayId: UUID // Add day ID to identify which day's activities we're reordering
+    let timeOfDay: TripActivity.TimeOfDay // Add time of day to identify which segment we're reordering
     let onAdd: () -> Void
     let onRemove: (UUID) -> Void
+    let onReorder: (Int, Int) -> Void // Add callback for reordering
+    
+    @State private var draggedItem: TripActivity?
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -375,10 +407,25 @@ struct TimeSegmentView: View {
                 }
             } else {
                 // List of activities
-                ForEach(activities) { activity in
+                ForEach(Array(activities.enumerated()), id: \.element.id) { index, activity in
                     ActivityItemView(activity: activity, onRemove: {
                         onRemove(activity.id)
                     })
+                    .padding(.bottom, 4)
+                    .onDrag {
+                        // Set the dragged item for tracking
+                        self.draggedItem = activity
+                        // Return a simple NSItemProvider - we don't actually need to transfer data
+                        return NSItemProvider(object: NSString(string: "activity"))
+                    }
+                    .onDrop(of: [UTType.text.identifier], delegate: ActivityDropDelegate(
+                        item: activity,
+                        items: activities,
+                        draggedItem: $draggedItem,
+                        onReorder: { fromIndex, toIndex in
+                            onReorder(fromIndex, toIndex)
+                        }
+                    ))
                 }
                 
                 // Add more activities button
@@ -398,33 +445,140 @@ struct TimeSegmentView: View {
     }
 }
 
+// Drop delegate for activity reordering
+struct ActivityDropDelegate: DropDelegate {
+    let item: TripActivity
+    let items: [TripActivity]
+    @Binding var draggedItem: TripActivity?
+    let onReorder: (Int, Int) -> Void
+    
+    func performDrop(info: DropInfo) -> Bool {
+        // We already handled the reordering in dropEntered
+        return true
+    }
+    
+    func dropEntered(info: DropInfo) {
+        // Get the dragged item and the destination item
+        guard let draggedItem = self.draggedItem,
+              let fromIndex = items.firstIndex(where: { $0.id == draggedItem.id }),
+              let toIndex = items.firstIndex(where: { $0.id == item.id }) else {
+            return
+        }
+        
+        // Only perform reordering if indices differ
+        if fromIndex != toIndex {
+            onReorder(fromIndex, toIndex)
+        }
+    }
+    
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        return DropProposal(operation: .move)
+    }
+}
+
 // MARK: - Activity Item
 struct ActivityItemView: View {
     let activity: TripActivity
     let onRemove: () -> Void
-    
+    private let apiKey = APIKeys.googlePlacesAPIKey // Access the API key
+    @State private var isPressed = false
+
+    var photoURL: URL? {
+        guard let photoReference = activity.photoReference else { return nil }
+        return URL(string: "https://maps.googleapis.com/maps/api/place/photo?maxwidth=200&photoreference=\(photoReference)&key=\(apiKey)")
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
+            // Image View
+            if let url = photoURL {
+                AsyncImage(url: url) {
+                    phase in
+                    if let image = phase.image {
+                        image.resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 60, height: 60)
+                            .cornerRadius(8)
+                            .clipped()
+                    } else if phase.error != nil {
+                        // Error view or placeholder
+                        Image(systemName: "photo") // Placeholder for error
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 60, height: 60)
+                            .foregroundColor(.gray)
+                            .background(Color(.systemGray5))
+                            .cornerRadius(8)
+                    } else {
+                        // Placeholder while loading
+                        ProgressView()
+                            .frame(width: 60, height: 60)
+                            .background(Color(.systemGray5))
+                            .cornerRadius(8)
+                    }
+                }
+            } else {
+                // Placeholder if no photo reference
+                Image(systemName: "building.2") 
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .padding(12)
+                    .frame(width: 60, height: 60)
+                    .foregroundColor(.gray)
+                    .background(Color(.systemGray5))
+                    .cornerRadius(8)
+            }
+            
             // Activity info
             VStack(alignment: .leading, spacing: 4) {
                 Text(activity.title)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                    .font(.headline)
+                    .lineLimit(2)
+                
+                Text(activity.location)
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .lineLimit(1)
+                
+                Spacer() // Pushes content to the bottom
                 
                 HStack {
-                    // Source tag
-                    Text(activity.sourceType)
+                    // Subtle drag handle icon
+                    Image(systemName: "line.3.horizontal")
                         .font(.caption2)
-                        .foregroundColor(.gray)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(4)
+                        .foregroundColor(.secondary.opacity(0.6))
+                        .padding(.top, 2)
                     
-                    // Location
-                    Text(activity.location)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    Spacer()
+                    
+                    // Activity type pill
+                    if let activityType = activity.activityType {
+                        Text(activityType)
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.teal.opacity(0.1))
+                            .foregroundColor(.teal)
+                            .cornerRadius(4)
+                    }
+                    
+                    // Rating pill if available
+                    if let rating = activity.rating {
+                        HStack(spacing: 2) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 8))
+                                .foregroundColor(.yellow)
+                            
+                            Text(String(format: "%.1f", rating))
+                                .font(.caption2)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.yellow.opacity(0.1))
+                        .foregroundColor(.orange)
+                        .cornerRadius(4)
+                        .padding(.leading, 4)
+                    }
                 }
             }
             
@@ -432,15 +586,26 @@ struct ActivityItemView: View {
             
             // Remove button
             Button(action: onRemove) {
-                Image(systemName: "xmark")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-                    .padding(6)
+                Image(systemName: "xmark.circle.fill")
+                    .font(.callout)
+                    .foregroundColor(.gray.opacity(0.7))
             }
+            .padding(.leading, -8) // Adjust spacing for a cleaner look
         }
-        .padding(10)
-        .background(Color(.systemGray6).opacity(0.5))
-        .cornerRadius(8)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(.systemBackground))
+                .shadow(color: isPressed ? Color.teal.opacity(0.3) : Color.black.opacity(0.05), 
+                       radius: isPressed ? 4 : 3, 
+                       x: 0, 
+                       y: isPressed ? 1 : 2)
+        )
+        .scaleEffect(isPressed ? 0.98 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPressed)
+        .onLongPressGesture(minimumDuration: 0.2, pressing: { pressing in
+            isPressed = pressing
+        }, perform: {})
     }
 }
 
